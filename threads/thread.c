@@ -464,7 +464,9 @@ do_iret (struct intr_frame *tf) {
    added at the end of the function. */
 static void
 thread_launch (struct thread *th) {
+	// 현재 실행 중인 쓰레드의 트랩 프레임 주소
 	uint64_t tf_cur = (uint64_t) &running_thread ()->tf;
+	// 실행 될 쓰레드의 트랩 프레임 주소
 	uint64_t tf = (uint64_t) &th->tf;
 	ASSERT (intr_get_level () == INTR_OFF);
 
@@ -540,6 +542,7 @@ do_schedule(int status) {
 
 static void
 schedule (void) {
+	// curr started with blocked
 	struct thread *curr = running_thread ();
 	struct thread *next = next_thread_to_run ();
 
