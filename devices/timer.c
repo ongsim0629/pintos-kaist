@@ -28,6 +28,7 @@ static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
+static void find_min_and_wakeup(void);
 
 /* Sets up the 8254 Programmable Interval Timer (PIT) to
    interrupt PIT_FREQ times per second, and registers the
@@ -93,8 +94,10 @@ timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	// while (timer_elapsed (start) < ticks)
+	// 	thread_yield ();
+	if (timer_elapsed (start) < ticks)
+		thread_sleep (start + ticks);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -126,6 +129,7 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	find_min_and_wakeup();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
@@ -183,4 +187,17 @@ real_time_sleep (int64_t num, int32_t denom) {
 		ASSERT (denom % 1000 == 0);
 		busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000));
 	}
+}
+
+
+// sleep_list의 최소 로컬틱을 구한다 -> 연우 언니가 구현해줄 예정 
+// (일단 find_min으로 함수 이름 임시지정하고 최소 로컬틱의 주소를 반환해준다고 생각하고 구현)
+static void find_min_and_wakeup() {
+    struct list_elem *min_tick_elem = list_begin(&sleep_list);
+    struct thread *min_tick_thread = list_entry(min_tick_elem, struct thread, elem);
+
+    if (min_tick_thread->local_ticks <= ticks) {
+        list_remove(min_tick_elem);
+        thread_unblock(min_tick_thread);
+    }
 }

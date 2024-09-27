@@ -24,10 +24,6 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
-/* List of processes in THREAD_READY state, that is, processes
-   that are ready to run but not actually running. */
-static struct list ready_list;
-
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -62,6 +58,14 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+
+bool list_less_func_impl (const struct list_elem *a, const struct list_elem *b, void *aux) {
+	struct thread *thread_a = list_entry(a, struct thread, elem);
+    struct thread *thread_b = list_entry(b, struct thread, elem);
+
+    // local_ticks 값이 작은 순서대로 정렬
+    return thread_a->local_ticks < thread_b->local_ticks;
+}
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -108,6 +112,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -152,6 +157,7 @@ thread_tick (void) {
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
 		intr_yield_on_return ();
+		// thread_sleep(thread_ticks);
 }
 
 /* Prints thread statistics. */
@@ -529,6 +535,11 @@ thread_launch (struct thread *th) {
  * It's not safe to call printf() in the schedule(). */
 static void
 do_schedule(int status) {
+	/* if ready_list is empty, run idle thread */
+	if (list_empty (&ready_list)) {
+		idle(idle_thread);
+		return;
+	}
 	ASSERT (intr_get_level () == INTR_OFF);
 	ASSERT (thread_current()->status == THREAD_RUNNING);
 	while (!list_empty (&destruction_req)) {
@@ -590,4 +601,20 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+void thread_sleep (int64_t ticks) {
+	struct thread *t = thread_current;
+	t->local_ticks = ticks;
+	if (t != idle_thread) {
+		enum intr_level old_level;
+
+		old_level = intr_disable ();
+		ASSERT (t->status == THREAD_BLOCKED);
+		//list_push_back (&sleep_list, &t->elem);
+		list_insert_ordered(&sleep_list, &t->elem, list_less_func_impl, NULL);
+		intr_set_level (old_level);
+		t->status = THREAD_BLOCKED;
+		do_schedule (THREAD_READY);
+	}
 }
