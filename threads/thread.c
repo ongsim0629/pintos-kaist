@@ -33,6 +33,11 @@ static struct thread *initial_thread;
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
+/* List of processes in THREAD_READY state, that is, processes
+   that are ready to run but not actually running. */
+static struct list ready_list;
+static struct list sleep_list;
+
 /* Thread destruction requests */
 static struct list destruction_req;
 
@@ -535,11 +540,6 @@ thread_launch (struct thread *th) {
  * It's not safe to call printf() in the schedule(). */
 static void
 do_schedule(int status) {
-	/* if ready_list is empty, run idle thread */
-	if (list_empty (&ready_list)) {
-		idle(idle_thread);
-		return;
-	}
 	ASSERT (intr_get_level () == INTR_OFF);
 	ASSERT (thread_current()->status == THREAD_RUNNING);
 	while (!list_empty (&destruction_req)) {
@@ -604,17 +604,49 @@ allocate_tid (void) {
 }
 
 void thread_sleep (int64_t ticks) {
-	struct thread *t = thread_current;
+	struct thread *t = thread_current();
 	t->local_ticks = ticks;
 	if (t != idle_thread) {
 		enum intr_level old_level;
-
 		old_level = intr_disable ();
-		ASSERT (t->status == THREAD_BLOCKED);
-		//list_push_back (&sleep_list, &t->elem);
+		// list_push_back (&sleep_list, &t->elem);
 		list_insert_ordered(&sleep_list, &t->elem, list_less_func_impl, NULL);
+		thread_block();
 		intr_set_level (old_level);
-		t->status = THREAD_BLOCKED;
-		do_schedule (THREAD_READY);
+		
 	}
+}
+
+// sleep_list 확인 후 wake up
+void thread_wakeup (int64_t ticks) {
+	// struct list_elem *min_tick_elem = list_begin(&sleep_list);
+    // struct thread *min_tick_thread = list_entry(min_tick_elem, struct thread, elem);
+
+    // if (min_tick_thread->local_ticks <= ticks) {
+	// 	enum intr_level old_level;
+	// 	old_level = intr_disable ();
+    //     list_remove(min_tick_elem);
+	// 	intr_set_level (old_level);
+    //     thread_unblock(min_tick_thread);
+		
+    // }
+
+	struct list_elem *e = list_begin(&sleep_list);
+	while (e != list_end(&sleep_list)) {
+		struct thread *t = list_entry(e, struct thread, elem);
+		ASSERT (t->status == THREAD_BLOCKED);
+		if (t->local_ticks <= ticks) {
+			enum intr_level old_level;
+			old_level = intr_disable();
+			e = list_remove(e); // 현재 요소를 삭제 후 다음 요소로 이동
+			thread_unblock(t);
+			intr_set_level(old_level);
+			
+		} else {
+			// e = list_next(e);
+			return;
+		}
+	}
+
+
 }
