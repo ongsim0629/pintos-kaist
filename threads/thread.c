@@ -68,8 +68,16 @@ bool list_less_func_impl (const struct list_elem *a, const struct list_elem *b, 
 	struct thread *thread_a = list_entry(a, struct thread, elem);
     struct thread *thread_b = list_entry(b, struct thread, elem);
 
-    // local_ticks 값이 작은 순서대로 정렬
+    // sort by lowest local_ticks value
     return thread_a->local_ticks < thread_b->local_ticks;
+}
+
+bool list_higher_priority (const struct list_elem *a, const struct list_elem *b, void *aux) {
+	struct thread *thread_a = list_entry(a, struct thread, elem);
+    struct thread *thread_b = list_entry(b, struct thread, elem);
+
+    // sort by highest priority value
+    return thread_a->priority > thread_b->priority;
 }
 
 /* Returns true if T appears to point to a valid thread. */
@@ -218,6 +226,12 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	/* compare the priorities of the currently running thread and the newly inserted one. 
+	Yield the CPU if the newly arriving thread has higher priority*/
+	int curr_prio = thread_current()->priority;
+	if (priority >= curr_prio) {
+		thread_yield();
+	}
 	return tid;
 }
 
@@ -251,7 +265,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	//list_push_back (&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &t->elem, list_higher_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -314,7 +329,8 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		//list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem, list_higher_priority, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -323,12 +339,21 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	// if there is a higher priority value than new priority in ready_list, yield cpu
+	if (!list_empty(&ready_list)) {
+		struct list_elem *highest = list_begin(&ready_list);
+		struct thread *t = list_entry(highest, struct thread, elem);
+		if (t->priority > new_priority) {
+			thread_yield();
+		}
+	}	
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) {
 	return thread_current ()->priority;
+	// 우선순위 기부가 있는 경우 더 높은(기부된) 우선순위를 반환
 }
 
 /* Sets the current thread's nice value to NICE. */
