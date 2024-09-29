@@ -93,6 +93,10 @@ struct thread {
 	int priority;                       /* Priority. */
 	int64_t local_ticks; 				/* local ticks */
 
+	struct lock *wait_for_lock;
+	struct list donations;
+	struct list_elem d_elem; 
+	
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -120,6 +124,13 @@ void thread_start (void);
 
 void thread_tick (void);
 void thread_print_stats (void);
+
+bool list_higher_priority (const struct list_elem *a, const struct list_elem *b, void *aux);
+
+/* List of processes in THREAD_READY state, that is, processes
+   that are ready to run but not actually running. */
+extern struct list ready_list;
+extern struct list sleep_list;
 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
