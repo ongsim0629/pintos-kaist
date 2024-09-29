@@ -67,7 +67,7 @@ sema_down (struct semaphore *sema) {
 	old_level = intr_disable ();
 	while (sema->value == 0) {
 		//list_push_back (&sema->waiters, &thread_current ()->elem);
-      list_insert_ordered(&sema->waiters, &thread_current ()->elem, list_higher_priority, NULL);
+		list_insert_ordered(&sema->waiters, &thread_current ()->elem, list_higher_priority, NULL);
 		thread_block ();
 	}
 	sema->value--;
@@ -120,8 +120,15 @@ sema_up (struct semaphore *sema) {
    // }
 
 	sema->value++;
-   
 	intr_set_level (old_level);
+	if (!list_empty(&ready_list)) {
+        struct thread *curr = thread_current();
+        struct thread *ready = list_entry(list_front(&ready_list), struct thread, elem);
+        // ready_list에 있는 스레드의 우선순위가 더 높으면 CPU를 넘김
+        if (curr->priority < ready->priority) {
+            thread_yield();
+        }
+    }
 }
 
 static void sema_test_helper (void *sema_);
@@ -195,27 +202,32 @@ lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
+	struct thread *current_thread = thread_current();
+	current_thread->wait_for_lock = lock;
 
-   priority_donate(lock);
+   	priority_donate(lock);
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current ();
 }
 
 void 
 priority_donate(struct lock *lock) {
-    struct thread *current_thread = thread_current();
+	struct thread *current_thread = thread_current();
+    struct lock *waiting_lock = current_thread->wait_for_lock;
 
-    while (lock != NULL && lock->holder != NULL) {
-        struct thread *holder = lock->holder;
+    // 락이 소유자와 기부자의 우선순위 비교
+    while (waiting_lock != NULL && waiting_lock->holder != NULL) {
+        struct thread *holder = waiting_lock->holder;
 
-        // 다중 기부를 처리하기 위해, 기존 기부받은 우선순위와 비교
+        // 우선순위 기부
         if (holder->priority < current_thread->priority) {
             holder->priority = current_thread->priority;
-        }
+        } else {
+			return;
+		}
 
-        // 중첩 기부를 위해 다음 락으로 진행
-        current_thread = holder;
-        lock = current_thread->wait_for_lock;
+        // 다음 대기 중인 락으로 이동
+        waiting_lock = holder->wait_for_lock;  // holder가 기다리는 락
     }
 }
 

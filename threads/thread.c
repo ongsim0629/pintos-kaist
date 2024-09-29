@@ -125,6 +125,7 @@ thread_init (void) {
 	list_init (&ready_list);
 	list_init (&sleep_list);
 	list_init (&destruction_req);
+	
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -132,6 +133,7 @@ thread_init (void) {
 	initial_thread->status = THREAD_RUNNING;
 	initial_thread->tid = allocate_tid ();
 
+	// donations 리스트 초기화
 	list_init(&initial_thread->donations);
 }
 
@@ -169,8 +171,10 @@ thread_tick (void) {
 
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
-		intr_yield_on_return ();
-		// thread_sleep(thread_ticks);
+		if (!list_empty(&ready_list) && thread_current()->priority <= list_entry(list_front(&ready_list), struct thread, elem)->priority) {
+        	intr_yield_on_return();
+    	}
+		// intr_yield_on_return ();
 }
 
 /* Prints thread statistics. */
@@ -225,7 +229,6 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
-
 	/* compare the priorities of the currently running thread and the newly inserted one. 
 	Yield the CPU if the newly arriving thread has higher priority*/
 	int curr_prio = thread_current()->priority;
@@ -329,7 +332,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		//list_push_back (&ready_list, &curr->elem);
+		// list_push_front (&ready_list, &curr->elem);
 		list_insert_ordered(&ready_list, &curr->elem, list_higher_priority, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
@@ -644,17 +647,6 @@ void thread_sleep (int64_t ticks) {
 
 // sleep_list 확인 후 wake up
 void thread_wakeup (int64_t ticks) {
-	// struct list_elem *min_tick_elem = list_begin(&sleep_list);
-    // struct thread *min_tick_thread = list_entry(min_tick_elem, struct thread, elem);
-
-    // if (min_tick_thread->local_ticks <= ticks) {
-	// 	enum intr_level old_level;
-	// 	old_level = intr_disable ();
-    //     list_remove(min_tick_elem);
-	// 	intr_set_level (old_level);
-    //     thread_unblock(min_tick_thread);
-		
-    // }
 
 	struct list_elem *e = list_begin(&sleep_list);
 	while (e != list_end(&sleep_list)) {
