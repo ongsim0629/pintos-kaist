@@ -11,6 +11,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "threads/fixed_point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -52,6 +53,8 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+
+int load_avg;
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -143,6 +146,7 @@ thread_start (void) {
 	struct semaphore idle_started;
 	sema_init (&idle_started, 0);
 	thread_create ("idle", PRI_MIN, idle, &idle_started);
+	load_avg = LOAD_AVG_DEFAULT;
 
 	/* Start preemptive thread scheduling. */
 	intr_enable ();
@@ -392,6 +396,8 @@ thread_get_nice (void) {
 }
 
 /* Returns 100 times the system load average. */
+// 현재 sysyem load average의 100배 반환
+// timer_ticks() % TIMER_FREQ == 0
 int
 thread_get_load_avg (void) {
 	/* TODO: Your implementation goes here */
@@ -468,6 +474,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->original_priority = priority;
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	t->nice = NICE_DEFAULT; 
+	t->recent_cpu = RECENT_CPU_DEFAULT;
 	list_init(&t->donations);
 
 }
@@ -688,4 +697,20 @@ void thread_wakeup (int64_t ticks) {
 	}
 
 
+}
+
+void mlfqs_priority (struct thread *t) {
+
+} 
+void mlfqs_recent_cpu (struct thread *t) {
+
+}
+void mlfqs_load_avg (void) {
+
+}
+void mlfqs_increment (void) {
+
+}
+void mlfqs_recalc (void) {
+	
 }
