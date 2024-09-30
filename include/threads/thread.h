@@ -100,6 +100,10 @@ struct thread {
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
+	/* for MLFQ */
+	int nice;
+	int recent_cpu;
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -158,5 +162,16 @@ int thread_get_load_avg (void);
 void do_iret (struct intr_frame *tf);
 
 
+/* for MLFQ */
+#define NICE_DEFAULT 0
+#define RECENT_CPU_DEFAULT 0
+#define LOAD_AVG_DEFAULT 0
+int load_avg;
+
+void mlfqs_priority (struct thread *t); 
+void mlfqs_recent_cpu (struct thread *t); 
+void mlfqs_load_avg (void);
+void mlfqs_increment (void);
+void mlfqs_recalc (void);
 
 #endif /* threads/thread.h */
