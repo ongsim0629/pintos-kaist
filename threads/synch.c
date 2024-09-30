@@ -121,6 +121,7 @@ sema_up (struct semaphore *sema) {
 
 	sema->value++;
 	intr_set_level (old_level);
+
 	if (!list_empty(&ready_list)) {
         struct thread *curr = thread_current();
         struct thread *ready = list_entry(list_front(&ready_list), struct thread, elem);
@@ -205,7 +206,7 @@ lock_acquire (struct lock *lock) {
 	struct thread *current_thread = thread_current();
 	current_thread->wait_for_lock = lock;
 
-   	priority_donate(lock);
+   	// priority_donate(lock);
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current ();
 }
@@ -279,8 +280,17 @@ lock_held_by_current_thread (const struct lock *lock) {
 struct semaphore_elem {
 	struct list_elem elem;              /* List element. */
 	struct semaphore semaphore;         /* This semaphore. */
+   int priority;
 };
 
+
+// 세마포어 리스트 정렬
+bool
+sema_elem_higher_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+    const struct semaphore_elem *sa = list_entry(a, struct semaphore_elem, elem);
+    const struct semaphore_elem *sb = list_entry(b, struct semaphore_elem, elem);
+    return sa->priority > sb->priority;
+}
 /* Initializes condition variable COND.  A condition variable
    allows one piece of code to signal a condition and cooperating
    code to receive the signal and act upon it. */
@@ -319,10 +329,11 @@ cond_wait (struct condition *cond, struct lock *lock) {
     ASSERT (!intr_context ());
     ASSERT (lock_held_by_current_thread (lock));
     sema_init (&waiter.semaphore, 0);
+    waiter.priority = thread_get_priority();
     // 기존 방식 : 유배지 끝에 집어넣음
     //list_push_back (&cond->waiters, &waiter.elem);
     // 바꾼 방식 : 유배지에 우선순위 고려해서 집어넣음
-    list_insert_ordered(&cond->waiters, &waiter.elem, list_higher_priority, NULL);
+    list_insert_ordered(&cond->waiters, &waiter.elem, sema_elem_higher_priority, NULL);
     lock_release (lock);
     sema_down (&waiter.semaphore);
     lock_acquire (lock);
@@ -361,3 +372,4 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 	while (!list_empty (&cond->waiters))
 		cond_signal (cond, lock);
 }
+
