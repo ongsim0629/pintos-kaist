@@ -31,6 +31,7 @@
 #include <string.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/palloc.h"
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -203,31 +204,92 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 	struct thread *current_thread = thread_current();
-	current_thread->wait_for_lock = lock;
 
-   	priority_donate(lock);
+   // 락이 이미 소유된 경우 (락이 불가능한 경우)
+   	if (lock->holder != NULL) {
+		current_thread->wait_on_lock = lock; // 락의 주소 저장
+
+    	// 락 소유자의 우선순위가 현재 스레드의 우선순위보다 작다면 우선순위 기부
+    	// if (lock->holder->priority < current_thread->priority) {
+		// 	list_push_back(&lock->holder->donations, &current_thread->d_elem);
+    	// 	priority_donate(lock);
+      	// }
+		list_push_back(&lock->holder->donations, &current_thread->d_elem);
+    	priority_donate(lock);
+   	}
+   
 	sema_down (&lock->semaphore);
+	
+	// 기다림이 끝난 후 대기 상태 해제
 	lock->holder = thread_current ();
+	current_thread->wait_on_lock = NULL;
 }
 
 void 
 priority_donate(struct lock *lock) {
 	struct thread *current_thread = thread_current();
-    struct lock *waiting_lock = current_thread->wait_for_lock;
+    struct lock *waiting_lock = current_thread->wait_on_lock;
 
     // 락이 소유자와 기부자의 우선순위 비교
     while (waiting_lock != NULL && waiting_lock->holder != NULL) {
         struct thread *holder = waiting_lock->holder;
 
         // 우선순위 기부
-        if (holder->priority < current_thread->priority) {
-            holder->priority = current_thread->priority;
-        } else {
-			return;
+    	if (holder->priority < current_thread->priority) {
+    		holder->priority = current_thread->priority;
+		} else if (holder->priority > current_thread->priority) {
+    		break;  // 더 높은 우선순위를 만나면 중단
 		}
 
         // 다음 대기 중인 락으로 이동
-        waiting_lock = holder->wait_for_lock;  // holder가 기다리는 락
+		current_thread = holder;
+        waiting_lock = holder->wait_on_lock;  // holder가 기다리는 락
+    }
+}
+
+
+
+/* Releases LOCK, which must be owned by the current thread.
+   This is lock_release function.
+
+   An interrupt handler cannot acquire a lock, so it does not
+   make sense to try to release a lock within an interrupt
+   handler. */
+
+void lock_release (struct lock *lock) {
+    ASSERT (lock != NULL);
+    ASSERT (lock_held_by_current_thread (lock));
+
+    enum intr_level old_level = intr_disable();
+
+    struct thread *t = thread_current();
+    struct list_elem *e = list_begin(&t->donations);
+
+    while (e != list_end(&t->donations)) {
+        struct thread *donated_t = list_entry(e, struct thread, d_elem);
+        if (donated_t->wait_on_lock == lock) {
+            e = list_remove(e);
+        } else {
+            e = list_next(e);
+        }
+    }
+
+    t->priority = t->original_priority;
+    refresh_priority(t);
+
+    lock->holder = NULL;
+    sema_up (&lock->semaphore);
+
+    intr_set_level(old_level);
+}
+
+void refresh_priority(struct thread *t) {
+    t->priority = t->original_priority;
+    for (struct list_elem *e = list_begin(&t->donations); e != list_end(&t->donations); e = list_next(e)) {
+        struct thread *donated_t = list_entry(e, struct thread, d_elem);
+        if (donated_t->priority > t->priority) {
+            t->priority = donated_t->priority;
+        }
     }
 }
 
@@ -248,21 +310,6 @@ lock_try_acquire (struct lock *lock) {
 	if (success)
 		lock->holder = thread_current ();
 	return success;
-}
-
-/* Releases LOCK, which must be owned by the current thread.
-   This is lock_release function.
-
-   An interrupt handler cannot acquire a lock, so it does not
-   make sense to try to release a lock within an interrupt
-   handler. */
-void
-lock_release (struct lock *lock) {
-	ASSERT (lock != NULL);
-	ASSERT (lock_held_by_current_thread (lock));
-
-	lock->holder = NULL;
-	sema_up (&lock->semaphore);
 }
 
 /* Returns true if the current thread holds LOCK, false

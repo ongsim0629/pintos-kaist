@@ -133,8 +133,6 @@ thread_init (void) {
 	initial_thread->status = THREAD_RUNNING;
 	initial_thread->tid = allocate_tid ();
 
-	// donations 리스트 초기화
-	list_init(&initial_thread->donations);
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -170,10 +168,10 @@ thread_tick (void) {
 		kernel_ticks++;
 
 	/* Enforce preemption. */
-	if (++thread_ticks >= TIME_SLICE)
-		if (!list_empty(&ready_list) && thread_current()->priority <= list_entry(list_front(&ready_list), struct thread, elem)->priority) {
-        	intr_yield_on_return();
-    	}
+	// if (++thread_ticks >= TIME_SLICE)
+	if (!list_empty(&ready_list) && thread_current()->priority <= list_entry(list_front(&ready_list), struct thread, elem)->priority) {
+        intr_yield_on_return();
+    }
 		// intr_yield_on_return ();
 }
 
@@ -203,6 +201,7 @@ tid_t
 thread_create (const char *name, int priority,
 		thread_func *function, void *aux) {
 	struct thread *t;
+	struct lock *lock = aux;
 	tid_t tid;
 
 	ASSERT (function != NULL);
@@ -226,13 +225,14 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
+	t->wait_on_lock = lock;
 
 	/* Add to run queue. */
 	thread_unblock (t);
 	/* compare the priorities of the currently running thread and the newly inserted one. 
 	Yield the CPU if the newly arriving thread has higher priority*/
-	int curr_prio = thread_current()->priority;
-	if (priority >= curr_prio) {
+	//int curr_prio = thread_current()->priority;
+	if (priority >= thread_current()->priority) {
 		thread_yield();
 	}
 	return tid;
@@ -339,18 +339,37 @@ thread_yield (void) {
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
-void
-thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
-	// if there is a higher priority value than new priority in ready_list, yield cpu
-	if (!list_empty(&ready_list)) {
-		struct list_elem *highest = list_begin(&ready_list);
-		struct thread *t = list_entry(highest, struct thread, elem);
-		if (t->priority > new_priority) {
-			thread_yield();
-		}
-	}	
+void thread_set_priority (int new_priority) {
+    enum intr_level old_level = intr_disable();
+
+    struct thread *cur = thread_current();
+
+    // 원래 우선순위 저장
+    int old_priority = cur->priority;
+    cur->original_priority = new_priority;
+
+    // 새로운 우선순위 설정 및 갱신
+    cur->priority = new_priority;
+    refresh_priority(cur);
+
+    // 우선순위 기부 처리
+    if (cur->wait_on_lock != NULL) {
+        priority_donate(cur->wait_on_lock);
+    }
+
+    // ready_list에서 가장 높은 우선순위를 가진 스레드 확인
+    if (!list_empty(&ready_list)) {
+        struct thread *highest_thread = list_entry(list_begin(&ready_list), struct thread, elem);
+
+        // 현재 스레드보다 더 높은 우선순위가 있으면 CPU를 양보
+        if (highest_thread->priority > cur->priority) {
+            thread_yield();
+        }
+    }
+
+    intr_set_level(old_level);
 }
+
 
 /* Returns the current thread's priority. */
 int
@@ -446,8 +465,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
+	t->original_priority = priority;
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+	list_init(&t->donations);
+
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
