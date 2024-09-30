@@ -215,8 +215,10 @@ lock_acquire (struct lock *lock) {
 		// 	list_push_back(&lock->holder->donations, &current_thread->d_elem);
     	// 	priority_donate(lock);
       	// }
-		list_push_back(&lock->holder->donations, &current_thread->d_elem);
-    	priority_donate(lock);
+      if (!thread_mlfqs) {
+         list_push_back(&lock->holder->donations, &current_thread->d_elem);
+         priority_donate(lock);
+         }
    	}
    
 	sema_down (&lock->semaphore);
@@ -262,22 +264,23 @@ void lock_release (struct lock *lock) {
     ASSERT (lock_held_by_current_thread (lock));
 
     enum intr_level old_level = intr_disable();
+    if (!thread_mlfqs) {
+      struct thread *t = thread_current();
+      struct list_elem *e = list_begin(&t->donations);
 
-    struct thread *t = thread_current();
-    struct list_elem *e = list_begin(&t->donations);
+      while (e != list_end(&t->donations)) {
+         struct thread *donated_t = list_entry(e, struct thread, d_elem);
+         if (donated_t->wait_on_lock == lock) {
+               e = list_remove(e);
+         } else {
+               e = list_next(e);
+         }
+      }
 
-    while (e != list_end(&t->donations)) {
-        struct thread *donated_t = list_entry(e, struct thread, d_elem);
-        if (donated_t->wait_on_lock == lock) {
-            e = list_remove(e);
-        } else {
-            e = list_next(e);
-        }
+      t->priority = t->original_priority;
+      refresh_priority(t);
     }
-
-    t->priority = t->original_priority;
-    refresh_priority(t);
-
+    
     lock->holder = NULL;
     sema_up (&lock->semaphore);
 

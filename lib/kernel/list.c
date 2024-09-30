@@ -245,6 +245,12 @@ list_remove (struct list_elem *elem) {
 	return elem->next;
 }
 
+bool 
+list_in(const struct list_elem *elem) {
+    // 리스트 요소가 이전과 다음 요소가 있는지 확인하여 리스트에 포함되어 있는지 검사
+    return elem->prev != NULL && elem->next != NULL;
+}
+
 /* Removes the front element from LIST and returns it.
    Undefined behavior if LIST is empty before removal. */
 struct list_elem *

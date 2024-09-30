@@ -28,6 +28,8 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+struct thread *get_idle_thread(void);
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -137,6 +139,7 @@ bool list_higher_priority (const struct list_elem *a, const struct list_elem *b,
    that are ready to run but not actually running. */
 extern struct list ready_list;
 extern struct list sleep_list;
+extern struct list blocked_list;
 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
@@ -171,8 +174,8 @@ void do_iret (struct intr_frame *tf);
 extern int load_avg;
 
 void mlfqs_priority (struct thread *t); 
-void mlfqs_recent_cpu (struct thread *t); 
-void mlfqs_load_avg (void);
+void mlfqs_recent_cpu (struct thread *t); // 각 스레드가 최근에 사용한 CPU 시간
+void mlfqs_load_avg (void); // ready_list에 대기 중인 스레드의 개수
 void mlfqs_increment (void);
 void mlfqs_recalc (void);
 

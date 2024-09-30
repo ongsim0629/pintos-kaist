@@ -125,11 +125,47 @@ timer_print_stats (void) {
 }
 
 /* Timer interrupt handler. */
+// static void
+// timer_interrupt (struct intr_frame *args UNUSED) {
+// 	ticks++;
+// 	thread_tick ();
+// 	thread_wakeup(ticks);
+// }
+/* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	
 	thread_wakeup(ticks);
+	
+	// mlfqs 스케줄러인 경우
+	if (thread_mlfqs){
+		struct thread *cur = thread_current();
+
+		// 매 틱마다 recent_cpu 값 증가
+		mlfqs_increment();
+
+		// 1초(TIMER_FREQ)마다 load_avg 및 모든 스레드의 recent_cpu와 priority 재계산
+		if(timer_ticks() % TIMER_FREQ == 0){
+			
+			mlfqs_load_avg();
+			mlfqs_recalc();
+		}
+		// 매 4틱 이렇게 계산하는 게 맞는 지 좀 헷갈림
+		else if(timer_ticks() % 4 == 0){
+			mlfqs_priority(cur);
+			// yield 과정 여기서 넣어줘야할지??
+			// 우선순위가 변경되었을 때 CPU 양보
+            if (cur != get_idle_thread() && !list_empty(&ready_list)) {
+                struct thread *next = list_entry(list_front(&ready_list), struct thread, elem);
+                if (next->priority > cur->priority) {
+                    thread_yield();  // 우선순위가 낮아지면 CPU 양보
+                }
+            }
+		}
+
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
