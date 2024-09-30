@@ -67,7 +67,6 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		//list_push_back (&sema->waiters, &thread_current ()->elem);
 		list_insert_ordered(&sema->waiters, &thread_current ()->elem, list_higher_priority, NULL);
 		thread_block ();
 	}
@@ -112,13 +111,10 @@ sema_up (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	if (!list_empty (&sema->waiters)) {
-      //list_sort(&sema->waiters, list_higher_priority, NULL);
+      	list_sort(&sema->waiters, list_higher_priority, NULL);
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
    }
-   // if (!list_empty(&ready_list)) {
-   //    list_sort(&ready_list, list_higher_priority, NULL);
-   // }
 
 	sema->value++;
 	intr_set_level (old_level);
@@ -211,10 +207,6 @@ lock_acquire (struct lock *lock) {
 		current_thread->wait_on_lock = lock; // 락의 주소 저장
 
     	// 락 소유자의 우선순위가 현재 스레드의 우선순위보다 작다면 우선순위 기부
-    	// if (lock->holder->priority < current_thread->priority) {
-		// 	list_push_back(&lock->holder->donations, &current_thread->d_elem);
-    	// 	priority_donate(lock);
-      	// }
 		list_push_back(&lock->holder->donations, &current_thread->d_elem);
     	priority_donate(lock);
    	}
