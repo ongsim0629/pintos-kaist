@@ -241,7 +241,6 @@ thread_create (const char *name, int priority,
 	thread_unblock (t);
 	/* compare the priorities of the currently running thread and the newly inserted one. 
 	Yield the CPU if the newly arriving thread has higher priority*/
-	//int curr_prio = thread_current()->priority;
 	if (priority >= thread_current()->priority) {
 		thread_yield();
 	}
@@ -712,7 +711,6 @@ void thread_sleep (int64_t ticks) {
 	if (t != idle_thread) {
 		enum intr_level old_level;
 		old_level = intr_disable ();
-		// list_push_back (&sleep_list, &t->elem);
 		list_insert_ordered(&sleep_list, &t->elem, list_less_func_impl, NULL);
 		thread_block();
 		intr_set_level (old_level);
