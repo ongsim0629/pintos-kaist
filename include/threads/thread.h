@@ -166,7 +166,7 @@ void do_iret (struct intr_frame *tf);
 #define NICE_DEFAULT 0
 #define RECENT_CPU_DEFAULT 0
 #define LOAD_AVG_DEFAULT 0
-int load_avg;
+extern int load_avg;
 
 void mlfqs_priority (struct thread *t); 
 void mlfqs_recent_cpu (struct thread *t); 
