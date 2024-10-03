@@ -100,6 +100,24 @@ void syscall_handler (struct intr_frame *f) {
 	// thread_exit ();
 }
 
+/* 유저 스택에 저장된 인자값들을 커널에 저장 */
+/* 인자가 저장된 위치가 유저 영역인지 확인 */
+void get_argument(void *esp, int *arg, int count) {
+
+	// esp: 스택에서 시스템 콜 번호가 저장된 위치
+	// 실제 인자들은 그 다음 위치부터 저장됨
+	void *addr;
+	for (int i = 0; i < count; i++) {
+		addr = esp + 4 * (i + 1);	
+		check_address(addr);	// addr가 유효한 유저 영역 주소값인지 검증 
+		arg[i] = * (int *)addr; 	// addr가 가리키는 영역의 값을 arg에 저장
+	}
+
+	
+	// arg에 담긴 값이 포인터라면, 그 역시도 유효한 유저영역 주소인지 검증해줘야 한다. 
+	// check_address(arg[i]) -> <함수 밖에서> 인자 사용할 때 처리
+}
+
 void halt(void){
 	/* shutdown_power_off()를 사용하여 pintos 종료 */
 	shutdown_power_off();
