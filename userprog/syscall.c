@@ -100,6 +100,35 @@ void syscall_handler (struct intr_frame *f) {
 	// thread_exit ();
 }
 
+// 사용자 프로그램이 커널에 요청을 할 때 전달하는 포인터 인자들의 검증과정에서 사용되는 함수, 만약에 포인터가 유효하지 않으면 사용자프로그램이 종료된다.
+void check_address(void *addr){
+    // 유효하지 않은 영역 : null pointer, 커널 메모리 공간 가리키는 포인터, 페이지 테이블에 매핑되지 않은 메모리를 참조하는 지 확인
+    // 유효하지 않은 영역 가리키는 포인터일 때 -> 프로세스 종료 exit() : 자원의 해제 이루어져야함
+    if (addr == NULL || is_kernel_vaddr(addr) || pml4_get_page(thread_current()->pml4, addr)== NULL){
+        // 비정상적 종료이므로 인자 -1
+        exit(-1);
+    }
+}
+
+/* 유저 스택에 저장된 인자값들을 커널에 저장 */
+/* 인자가 저장된 위치가 유저 영역인지 확인 */
+// x86-64 아키텍처에서는 get_argument() 함수 없이도 시스템 콜 인자를 레지스터를 통해 커널 영역으로 바로 전달할 수 있음
+// void get_argument(void *esp, int *arg, int count) {
+
+// 	// esp: 스택에서 시스템 콜 번호가 저장된 위치
+// 	// 실제 인자들은 그 다음 위치부터 저장됨
+// 	void *addr;
+// 	for (int i = 0; i < count; i++) {
+// 		addr = esp + 4 * (i + 1);	
+// 		check_address(addr);	// addr가 유효한 유저 영역 주소값인지 검증 
+// 		arg[i] = * (int *)addr; 	// addr가 가리키는 영역의 값을 arg에 저장
+// 	}
+
+	
+// 	// arg에 담긴 값이 포인터라면, 그 역시도 유효한 유저영역 주소인지 검증해줘야 한다. 
+// 	// check_address(arg[i]) -> <함수 밖에서> 인자 사용할 때 처리
+// }
+
 void halt(void){
 	/* shutdown_power_off()를 사용하여 pintos 종료 */
 	shutdown_power_off();
