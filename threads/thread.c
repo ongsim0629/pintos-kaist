@@ -180,7 +180,7 @@ thread_tick (void) {
 	/* Enforce preemption. */
 	// if (++thread_ticks >= TIME_SLICE)
 	if (!list_empty(&ready_list) && thread_current()->priority <= list_entry(list_front(&ready_list), struct thread, elem)->priority) {
-        intr_yield_on_return();
+        intr_yield_on_return ();
     }
 		// intr_yield_on_return ();
 }
@@ -278,14 +278,12 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	//list_push_back (&ready_list, &t->elem);
-	// if (list_in(&t->elem)) {
-	// 	list_remove(&t->elem);
-	// }
 	list_insert_ordered(&ready_list, &t->elem, list_higher_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
+
+
 
 /* Returns the name of the running thread. */
 const char *

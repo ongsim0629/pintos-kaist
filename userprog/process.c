@@ -50,6 +50,11 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	 // Argument Passing ~
+    char *save_ptr;
+    strtok_r(file_name, " ", &save_ptr);
+    // ~ Argument Passing
+
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -160,6 +165,25 @@ error:
 
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
+// 프로세스 가상 메모리
+//  높은 주소 (큰 값)
+//    +-------------------+
+//    |                   |
+//    |       스택         |
+//    |  (위에서 아래로)   |
+//    |                   |
+//    +-------------------+
+//    |       힙           |
+//    |  (아래에서 위로)   |
+//    +-------------------+
+//    |      BSS 섹션      |
+//    +-------------------+
+//    |      데이터 섹션    |
+//    +-------------------+
+//    |     코드 섹션      |
+//    |  (텍스트 섹션)     |
+//    +-------------------+
+//    낮은 주소 (작은 값)
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
@@ -176,8 +200,32 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+	 /* Implement argument passing 
+	 *  process_exec("filename") --> process_exec("filename argv[0] argv[1] ...")
+	 *  ex) "/bin/ls -l foo bar" --> argc = 4, argv = ["/bin/ls", "-ls", "foo", "bar"] */
+    char *argv[MAX_ARG_SIZE / 2 + 1];
+    int argc = 0; 
+
+    char *token;    
+    char *save_ptr;
+    token = strtok_r(file_name, " ", &save_ptr);
+    while (token != NULL)
+    {
+        argv[argc] = token;
+        token = strtok_r(NULL, " ", &save_ptr);
+        argc++;
+    }
+
+
 	/* And then load the binary */
 	success = load (file_name, &_if);
+
+    argument_stack(argv, argc, &_if.rsp);
+    _if.R.rdi = argc;
+    _if.R.rsi = (char *)_if.rsp + 8;
+
+	/* for testing */
+    // hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack을 16진수로 프린트
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -189,6 +237,94 @@ process_exec (void *f_name) {
 	NOT_REACHED ();
 }
 
+// | Address          | Name             | Data            | Type            |
+// |------------------|------------------|-----------------|-----------------|
+// | 0x4747fffc       | argv[3][...]     | 'bar\0'         | char[4]         |
+// | 0x4747fff8       | argv[2][...]     | 'foo\0'         | char[4]         |
+// | 0x4747fff5       | argv[1][...]     | '-l\0'          | char[3]         |
+// | 0x4747ffed       | argv[0][...]     | '/bin/ls\0'     | char[8]         |
+// | 0x4747ffe8       | word-align       | 0               | uint8_t[]       |
+// | 0x4747ffe0       | argv[4]          | 0               | char *          |
+// | 0x4747ffd8       | argv[3]          | 0x4747fffc      | char *          |
+// | 0x4747ffd0       | argv[2]          | 0x4747fff8      | char *          |
+// | 0x4747ffc8       | argv[1]          | 0x4747fff5      | char *          |
+// | 0x4747ffc0       | argv[0]          | 0x4747ffed      | char *          |
+// | 0x4747ffb8       | return address   | 0               | void (*) ()     |
+
+// 첫번째 인자, 두번째 인자
+// RDI: 4 | RSI: 0x4747ffc0
+void argument_stack(char *argv[], int argc, void **rsp)
+{
+	//    +-------------------+  <--- rsp (USER_STACK)
+	//    |                   |
+	//    |       스택         |
+	//    |  (위에서 아래로)     |
+	//    |                   |
+	//    +-------------------+
+	// "/bin/ls -l foo bar" --> argc = 4, argv = ["/bin/ls", "-ls", "foo", "bar"]
+	// rsp 초기 값 = 0x47480000 (USER_STACK)
+    for (int i = argc; i > 0; i--)
+    {
+		// 문자열 끝을 알려주기 위한 NULL 추가
+		(*rsp)--;
+        **(char **)rsp = NULL;
+
+        for (int j = strlen(argv[i-1]); j > 0; j--)
+        {
+            (*rsp)--;                 
+            **(char **)rsp = argv[i-1][j-1]; 
+        }
+		
+        argv[i-1] = *(char **)rsp; // parse[i]에 현재 rsp의 값 저장해둠(지금 저장한 인자가 시작하는 주소값)
+    }
+	
+	// | Address          | Name             | Data            | Type            |
+	// |------------------|------------------|-----------------|-----------------|
+	// | 0x4747fffc       | argv[3][...]     | 'bar\0'         | char[4]         |
+	// | 0x4747fff8       | argv[2][...]     | 'foo\0'         | char[4]         |
+	// | 0x4747fff5       | argv[1][...]     | '-l\0'          | char[3]         |
+	// | 0x4747ffed       | argv[0][...]     | '/bin/ls\0'     | char[8]         |
+	// 현재 rsp = 0x4747ffed
+
+    // 앞으로는 고정된 사이즈 (워드 사이즈)의 메모리를 쓸 것이므로 8바이트로 정렬하여 성능 최적화
+	*rsp = (void *)((uintptr_t)*rsp & ~7);
+	// 현재 rsp = 0x4747ffe8
+
+    // 인자 문자열 종료를 나타내는 0 push
+    (*rsp) -= 8;
+    **(char ***)rsp = 0; // char* 타입의 0 추가
+	// | Address          | Name             | Data            | Type            |
+	// |------------------|------------------|-----------------|-----------------|
+	// | 0x4747fffc       | argv[3][...]     | 'bar\0'         | char[4]         |
+	// | 0x4747fff8       | argv[2][...]     | 'foo\0'         | char[4]         |
+	// | 0x4747fff5       | argv[1][...]     | '-l\0'          | char[3]         |
+	// | 0x4747ffed       | argv[0][...]     | '/bin/ls\0'     | char[8]         |
+	// | 0x4747ffe8       | word-align       | 0               | uint8_t[]       |
+	// | 0x4747ffe0       | argv[4]          | 0               | char *          |
+
+    // 각 인자 문자열의 주소 push
+    for (int i = argc; i > 0; i--)
+    {
+        (*rsp) -= 8; // 다음 주소로 이동
+        **(char ***)rsp = argv[i-1]; // char* 타입의 주소 추가
+    }
+	// | Address          | Name             | Data            | Type            |
+	// |------------------|------------------|-----------------|-----------------|
+	// | 0x4747fffc       | argv[3][...]     | 'bar\0'         | char[4]         |
+	// | 0x4747fff8       | argv[2][...]     | 'foo\0'         | char[4]         |
+	// | 0x4747fff5       | argv[1][...]     | '-l\0'          | char[3]         |
+	// | 0x4747ffed       | argv[0][...]     | '/bin/ls\0'     | char[8]         |
+	// | 0x4747ffe8       | word-align       | 0               | uint8_t[]       |
+	// | 0x4747ffe0       | argv[4]          | 0               | char *          |
+	// | 0x4747ffd8       | argv[3]          | 0x4747fffc      | char *          |
+	// | 0x4747ffd0       | argv[2]          | 0x4747fff8      | char *          |
+	// | 0x4747ffc8       | argv[1]          | 0x4747fff5      | char *          |
+	// | 0x4747ffc0       | argv[0]          | 0x4747ffed      | char *          |
+
+    // return address push
+    (*rsp) -= 8;
+    **(void ***)rsp = 0; // void* 타입의 0 추가
+}
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
@@ -204,7 +340,13 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	return -1;
+
+	/* for testing */
+	// for (int i = 0; i < 100000000; i++)
+  	// {
+  	// }
+  	return -1;
+	
 }
 
 /* Exit the process. This function is called by thread_exit (). */
