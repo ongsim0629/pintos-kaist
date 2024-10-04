@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -107,6 +108,20 @@ struct thread {
 	/* for MLFQ */
 	int nice;
 	int recent_cpu;
+
+
+	/* [Project 2] for process hierarchy */
+	//bool create_succ; // 프로세스의 생성 성공 여부 (실패 시 -1 )
+	//bool is_exited; // 프로세스의 종료 유무
+	int exit_status; // 프로세스의 종료 상태
+
+	struct semaphore fork_sema; // 자식 프로세스의 생성 대기를 위한 세마포어
+	struct semaphore exit_sema; // 자식 프로세스의 종료 대기를 위한 세마포어
+
+	struct list child_list; // 자식 프로세스 리스트 필드
+	struct list_elem child_elem; // 부모 프로세스에 현재 스레드를 자식으로 추가하기 위한 필드
+
+	struct intr_frame parent_if; // 부모 프로세스 인터럽트 프레임
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
