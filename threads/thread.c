@@ -237,6 +237,8 @@ thread_create (const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 	t->wait_on_lock = lock;
 
+	list_push_back(&thread_current()->child_list, &t->child_elem); // 부모: 현재 실행 중인 스레드
+
 	/* Add to run queue. */
 	thread_unblock (t);
 	/* compare the priorities of the currently running thread and the newly inserted one. 
@@ -521,6 +523,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->nice = NICE_DEFAULT; 
 	t->recent_cpu = RECENT_CPU_DEFAULT;
 	list_init(&t->donations);
+
+	// [Project 2]
+	t->exit_status = 0;
+	sema_init(&t->exit_sema, 0);
+	sema_init(&t->fork_sema, 0);
+	list_init(&t->child_list);
 
 }
 
