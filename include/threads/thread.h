@@ -136,10 +136,6 @@ struct thread {
 	struct list_elem child_elem; // 부모 프로세스에 현재 스레드를 자식으로 추가하기 위한 필드
 
 	struct intr_frame parent_if; // 부모 프로세스 인터럽트 프레임
-
-	/* [Project 2] for file system*/
-	struct file **fd_table;
-	int next_fd;
 	
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */

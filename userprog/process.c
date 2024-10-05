@@ -403,16 +403,17 @@ void argument_stack(char *argv[], int argc, void **rsp)
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) {
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
+process_wait (tid_t child_tid) {
+	struct thread *cur = thread_current();
+	struct thread *child_t = get_child_process(child_tid);
 
-	/* for testing */
-	// for (int i = 0; i < 100000000; i++)
-  	// {
-  	// }
-  	return -1;
+	// 예외처리 (이미 wait 요청이 들어온 상태라면 (waiters 확인))
+	if (child_t == NULL || !list_empty(&child_t->exit_sema.waiters)) {
+		return -1;
+	}
+
+	sema_down(&child_t->exit_sema);
+  	return child_t->exit_status;
 	
 }
 
@@ -496,6 +497,7 @@ process_exit (void) {
 
 	curr->next_fd = 2;
 	process_cleanup ();
+	sema_up(&curr->exit_sema);
 }
 
 /* Free the current process's resources. */

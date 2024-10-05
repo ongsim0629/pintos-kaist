@@ -16,23 +16,6 @@
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
 
-/* Function prototypes for all system calls */
-void halt(void);
-void exit(int status);
-bool create(const char *file, unsigned initial_size);
-bool remove(const char *file);
-int open(const char *file);
-int filesize(int fd);
-void seek(int fd, unsigned position);
-int read(int fd, void *buffer, unsigned size);
-unsigned tell(int fd);  // Returns unsigned
-void close(int fd);
-int write(int fd, void *buffer, unsigned size);
-tid_t exec(const char *cmd_line);
-int wait(tid_t tid);
-tid_t fork(const char *thread_name, struct intr_frame *f);
-void check_address(void *addr);
-
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -110,47 +93,65 @@ syscall_init (void) {
 
 /* The main system call interface */
 void syscall_handler (struct intr_frame *f) {
-    // 유효한 시스템 콜인지 확인
-    switch (f->R.rax) {
-        case SYS_HALT:
-            halt();
-            break;
-        case SYS_EXIT:
-            exit(f->R.rdi);
-            break;
-        case SYS_CREATE:
-            check_address((void *)f->R.rdi);  // 파일 이름 포인터의 유효성 검사
-            f->R.rax = create((const char *)f->R.rdi, f->R.rsi);
-            break;
-        case SYS_REMOVE:
-            check_address((void *)f->R.rdi);  // 파일 이름 포인터의 유효성 검사
-            f->R.rax = remove((const char *)f->R.rdi);
-            break;
-        case SYS_OPEN:
-            check_address((void *)f->R.rdi);  // 파일 이름 포인터의 유효성 검사
-            f->R.rax = open((const char *)f->R.rdi);
-            break;
-        case SYS_READ:
-            check_address((void *)f->R.rsi);  // 버퍼 포인터의 유효성 검사
-            f->R.rax = read(f->R.rdi, (void *)f->R.rsi, f->R.rdx);
-            break;
-        case SYS_WRITE:
-            check_address((void *)f->R.rsi);  // 버퍼 포인터의 유효성 검사
-            f->R.rax = write(f->R.rdi, (void *)f->R.rsi, f->R.rdx);
-            break;
-        case SYS_SEEK:
-            seek(f->R.rdi, f->R.rsi);
-            break;
-        case SYS_TELL:
-            f->R.rax = tell(f->R.rdi);
-            break;
-        case SYS_CLOSE:
-            close(f->R.rdi);
-            break;
-        default:
-            exit(-1);
-            break;
-    }
+	// TODO: Your implementation goes here.
+	// printf ("system call!\n");
+
+	char *fn_copy;
+
+	/*
+	 x86-64 규약은 함수가 리턴하는 값을 rax 레지스터에 배치하는 것
+	 값을 반환하는 시스템 콜은 intr_frame 구조체의 rax 멤버 수정으로 가능
+	 */
+	switch (f->R.rax) {		// rax is the system call number
+		case SYS_HALT:
+			halt();			// pintos를 종료시키는 시스템 콜
+			break;
+		case SYS_EXIT:
+			exit(f->R.rdi);	// 현재 프로세스를 종료시키는 시스템 콜
+			break;
+		case SYS_CREATE:
+			f->R.rax = create(f->R.rdi, f->R.rsi);
+			break;
+		case SYS_REMOVE:
+			f->R.rax = remove(f->R.rdi);
+			break;
+		case SYS_OPEN:
+			f->R.rax = open(f->R.rdi);
+			break;
+		case SYS_FILESIZE:
+			f->R.rax = filesize(f->R.rdi);
+			break;
+		case SYS_READ:
+			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
+			break;
+		case SYS_SEEK:
+			seek(f->R.rdi, f->R.rsi);
+			break;
+		case SYS_TELL:
+			f->R.rax = tell(f->R.rdi);
+			break;
+		case SYS_CLOSE:
+			close(f->R.rdi);
+			break;
+		case SYS_WRITE:
+			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+			break;
+		case SYS_EXEC:
+			if (exec(f->R.rdi) == -1) {
+				exit(-1);
+			}
+			break;
+		case SYS_FORK:
+			f->R.rax = fork(f->R.rdi, f);
+			break;
+		case SYS_WAIT:
+			f->R.rax = wait(f->R.rdi);
+			break;
+		default:
+			exit(-1);
+			break;
+	}
+	// thread_exit ();
 }
 
 // 사용자 프로그램이 커널에 요청을 할 때 전달하는 포인터 인자들의 검증과정에서 사용되는 함수, 만약에 포인터가 유효하지 않으면 사용자프로그램이 종료된다.
