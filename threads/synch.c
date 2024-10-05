@@ -116,18 +116,25 @@ sema_up (struct semaphore *sema) {
 					struct thread, elem));
    }
 
-	sema->value++;
-	intr_set_level (old_level);
-
-	if (!list_empty(&ready_list)) {
-        struct thread *curr = thread_current();
-        struct thread *ready = list_entry(list_front(&ready_list), struct thread, elem);
-        // ready_list에 있는 스레드의 우선순위가 더 높으면 CPU를 넘김
-        if (curr->priority < ready->priority) {
-               thread_yield();
-        }
-    }
+   sema->value++;
+   intr_set_level (old_level);
+   if (list_empty(&ready_list))
+    return;
+   struct thread *curr = thread_current();
+   struct thread *ready = list_entry(list_front(&ready_list), struct thread, elem);
+   if (!intr_context() && curr->priority < ready->priority) {
+    thread_yield ();
+   }
+	// if (!list_empty(&ready_list)) {
+   //      struct thread *curr = thread_current();
+   //      struct thread *ready = list_entry(list_front(&ready_list), struct thread, elem);
+   //      // ready_list에 있는 스레드의 우선순위가 더 높으면 CPU를 넘김
+   //      if (curr->priority < ready->priority) {
+   //          thread_yield();
+   //      }
+   //  }
 }
+
 
 static void sema_test_helper (void *sema_);
 

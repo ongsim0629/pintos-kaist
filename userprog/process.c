@@ -26,6 +26,9 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+int process_add_file (struct file *f);
+struct file *prcoess_get_file (int fd);
+void process_close_file (int fd);
 
 /* General process initializer for initd and other process. */
 static void
@@ -49,6 +52,11 @@ process_create_initd (const char *file_name) {
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
+
+	 // Argument Passing ~
+    char *save_ptr;
+    strtok_r(file_name, " ", &save_ptr);
+    // ~ Argument Passing
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
@@ -224,6 +232,25 @@ error:
 
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
+// 프로세스 가상 메모리
+//  높은 주소 (큰 값)
+//    +-------------------+
+//    |                   |
+//    |       스택         |
+//    |  (위에서 아래로)   |
+//    |                   |
+//    +-------------------+
+//    |       힙           |
+//    |  (아래에서 위로)   |
+//    +-------------------+
+//    |      BSS 섹션      |
+//    +-------------------+
+//    |      데이터 섹션    |
+//    +-------------------+
+//    |     코드 섹션      |
+//    |  (텍스트 섹션)     |
+//    +-------------------+
+//    낮은 주소 (작은 값)
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
@@ -240,8 +267,32 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+	 /* Implement argument passing 
+	 *  process_exec("filename") --> process_exec("filename argv[0] argv[1] ...")
+	 *  ex) "/bin/ls -l foo bar" --> argc = 4, argv = ["/bin/ls", "-ls", "foo", "bar"] */
+    char *argv[MAX_ARG_SIZE / 2 + 1];
+    int argc = 0; 
+
+    char *token;    
+    char *save_ptr;
+    token = strtok_r(file_name, " ", &save_ptr);
+    while (token != NULL)
+    {
+        argv[argc] = token;
+        token = strtok_r(NULL, " ", &save_ptr);
+        argc++;
+    }
+
+
 	/* And then load the binary */
 	success = load (file_name, &_if);
+
+    argument_stack(argv, argc, &_if.rsp);
+    _if.R.rdi = argc;
+    _if.R.rsi = (char *)_if.rsp + 8;
+
+	/* for testing */
+    // hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack을 16진수로 프린트
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -253,6 +304,94 @@ process_exec (void *f_name) {
 	NOT_REACHED ();
 }
 
+// | Address          | Name             | Data            | Type            |
+// |------------------|------------------|-----------------|-----------------|
+// | 0x4747fffc       | argv[3][...]     | 'bar\0'         | char[4]         |
+// | 0x4747fff8       | argv[2][...]     | 'foo\0'         | char[4]         |
+// | 0x4747fff5       | argv[1][...]     | '-l\0'          | char[3]         |
+// | 0x4747ffed       | argv[0][...]     | '/bin/ls\0'     | char[8]         |
+// | 0x4747ffe8       | word-align       | 0               | uint8_t[]       |
+// | 0x4747ffe0       | argv[4]          | 0               | char *          |
+// | 0x4747ffd8       | argv[3]          | 0x4747fffc      | char *          |
+// | 0x4747ffd0       | argv[2]          | 0x4747fff8      | char *          |
+// | 0x4747ffc8       | argv[1]          | 0x4747fff5      | char *          |
+// | 0x4747ffc0       | argv[0]          | 0x4747ffed      | char *          |
+// | 0x4747ffb8       | return address   | 0               | void (*) ()     |
+
+// 첫번째 인자, 두번째 인자
+// RDI: 4 | RSI: 0x4747ffc0
+void argument_stack(char *argv[], int argc, void **rsp)
+{
+	//    +-------------------+  <--- rsp (USER_STACK)
+	//    |                   |
+	//    |       스택         |
+	//    |  (위에서 아래로)     |
+	//    |                   |
+	//    +-------------------+
+	// "/bin/ls -l foo bar" --> argc = 4, argv = ["/bin/ls", "-ls", "foo", "bar"]
+	// rsp 초기 값 = 0x47480000 (USER_STACK)
+    for (int i = argc; i > 0; i--)
+    {
+		// 문자열 끝을 알려주기 위한 NULL 추가
+		(*rsp)--;
+        **(char **)rsp = NULL;
+
+        for (int j = strlen(argv[i-1]); j > 0; j--)
+        {
+            (*rsp)--;                 
+            **(char **)rsp = argv[i-1][j-1]; 
+        }
+		
+        argv[i-1] = *(char **)rsp; // parse[i]에 현재 rsp의 값 저장해둠(지금 저장한 인자가 시작하는 주소값)
+    }
+	
+	// | Address          | Name             | Data            | Type            |
+	// |------------------|------------------|-----------------|-----------------|
+	// | 0x4747fffc       | argv[3][...]     | 'bar\0'         | char[4]         |
+	// | 0x4747fff8       | argv[2][...]     | 'foo\0'         | char[4]         |
+	// | 0x4747fff5       | argv[1][...]     | '-l\0'          | char[3]         |
+	// | 0x4747ffed       | argv[0][...]     | '/bin/ls\0'     | char[8]         |
+	// 현재 rsp = 0x4747ffed
+
+    // 앞으로는 고정된 사이즈 (워드 사이즈)의 메모리를 쓸 것이므로 8바이트로 정렬하여 성능 최적화
+	*rsp = (void *)((uintptr_t)*rsp & ~7);
+	// 현재 rsp = 0x4747ffe8
+
+    // 인자 문자열 종료를 나타내는 0 push
+    (*rsp) -= 8;
+    **(char ***)rsp = 0; // char* 타입의 0 추가
+	// | Address          | Name             | Data            | Type            |
+	// |------------------|------------------|-----------------|-----------------|
+	// | 0x4747fffc       | argv[3][...]     | 'bar\0'         | char[4]         |
+	// | 0x4747fff8       | argv[2][...]     | 'foo\0'         | char[4]         |
+	// | 0x4747fff5       | argv[1][...]     | '-l\0'          | char[3]         |
+	// | 0x4747ffed       | argv[0][...]     | '/bin/ls\0'     | char[8]         |
+	// | 0x4747ffe8       | word-align       | 0               | uint8_t[]       |
+	// | 0x4747ffe0       | argv[4]          | 0               | char *          |
+
+    // 각 인자 문자열의 주소 push
+    for (int i = argc; i > 0; i--)
+    {
+        (*rsp) -= 8; // 다음 주소로 이동
+        **(char ***)rsp = argv[i-1]; // char* 타입의 주소 추가
+    }
+	// | Address          | Name             | Data            | Type            |
+	// |------------------|------------------|-----------------|-----------------|
+	// | 0x4747fffc       | argv[3][...]     | 'bar\0'         | char[4]         |
+	// | 0x4747fff8       | argv[2][...]     | 'foo\0'         | char[4]         |
+	// | 0x4747fff5       | argv[1][...]     | '-l\0'          | char[3]         |
+	// | 0x4747ffed       | argv[0][...]     | '/bin/ls\0'     | char[8]         |
+	// | 0x4747ffe8       | word-align       | 0               | uint8_t[]       |
+	// | 0x4747ffe0       | argv[4]          | 0               | char *          |
+	// | 0x4747ffd8       | argv[3]          | 0x4747fffc      | char *          |
+	// | 0x4747ffd0       | argv[2]          | 0x4747fff8      | char *          |
+	// | 0x4747ffc8       | argv[1]          | 0x4747fff5      | char *          |
+	// | 0x4747ffc0       | argv[0]          | 0x4747ffed      | char *          |
+
+    // return address push
+    (*rsp) -= 8;
+    **(void ***)rsp = 0; // void* 타입의 0 추가
+}
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
@@ -268,7 +407,71 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	return -1;
+
+	/* for testing */
+	// for (int i = 0; i < 100000000; i++)
+  	// {
+  	// }
+  	return -1;
+	
+}
+
+
+/* project 2 helper functions */
+
+// 현재 파일을 현재 스레드의 파일 디스크립터 테이블에 추가해주는 함수
+int process_add_file(struct file *f){
+	struct thread *curr = thread_current();
+	// 파일 디스크립터 테이블에서 빈 슬롯(가장 작은 fd)을 찾음
+    for (int fd = 0; fd < curr->next_fd; fd++) {
+        if (curr->fd_table[fd] == NULL) {
+            curr->fd_table[fd] = f;
+            return fd;
+        }
+    }
+	// next_fd 보다 작으면서 동시에 빈 슬롯을 찾지 못한 경우
+    // next_fd를 사용하여 새로운 파일 디스크립터 할당
+    if (curr->next_fd < 64) {
+        curr->fd_table[curr->next_fd] = f;
+        return curr->next_fd++;
+    }
+    return -1;
+}
+
+struct file *process_get_file (int fd){
+	struct thread *curr = thread_current();
+
+	if (fd < 2 || fd >= 64) {
+        return NULL;
+    }
+
+	return curr->fd_table[fd];
+}
+
+void process_close_file (int fd){
+	struct thread *curr = thread_current();
+
+    // 파일 디스크립터가 유효한지 확인 (0 <= fd < 64)
+    if (fd < 2 || fd >= 64 || curr->fd_table[fd] == NULL) {
+        return;
+    }
+
+	struct file *file_to_close = curr->fd_table[fd];
+
+	// fd가 0 (stdin) 또는 1 (stdout)인 경우에 대한 특별 처리
+    if (fd == 0) {
+        // 표준 입력(stdin) 처리
+        // 필요하다면 참조 카운트 관리 (ex: curr->stdin_count 감소 등)
+    } else if (fd == 1) {
+        // 표준 출력(stdout) 처리
+        // 필요하다면 참조 카운트 관리 (ex: curr->stdout_count 감소 등)
+    } else {
+        // 일반 파일에 대한 처리
+        file_close(file_to_close);  // 일반 파일인 경우에만 파일 닫기
+    }
+
+	// 파일 디스크립터 테이블 초기화
+	curr->fd_table[fd] = NULL;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -276,10 +479,22 @@ void
 process_exit (void) {
 	struct thread *curr = thread_current ();
 	/* TODO: Your code goes here.
-	 * TODO: Implement process termination message (see
-	 * TODO: project2/process_termination.html).
-	 * TODO: We recommend you to implement process resource cleanup here. */
 
+	 * TODO: Implement process termination message (see project2/process_termination.html). */
+	printf("%s: exit(%d)\n", curr->name, curr->exit_status);
+
+	/* TODO: We recommend you to implement process resource cleanup here. */
+	/* 프로세스에 열려있는 모든 파일 닫기 */
+    for (int i = 2; i < curr->next_fd; i++) {
+        if (curr->fd_table[i] != NULL) {
+            file_close(curr->fd_table[i]); // 열려있는 파일 닫고
+            curr->fd_table[i] = NULL;      // fd_table에서 해당하는 부분 NULL 처리
+        }
+    }
+	// 파일 디스크립터 테이블 메모리 해제
+	palloc_free_multiple(curr->fd_table, FDT_PAGES);
+
+	curr->next_fd = 2;
 	process_cleanup ();
 }
 
