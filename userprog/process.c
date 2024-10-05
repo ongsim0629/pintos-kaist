@@ -81,11 +81,55 @@ initd (void *f_name) {
 
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
+
+/* process_execute() 함수를 호출하여 자식 프로세스 생성 */ 
+/* 생성된 자식 프로세스의 프로세스 디스크립터를 검색 */
+/* 자식 프로세스의 프로그램이 적재될 때까지 대기  -> sema_down() */
+/* 프로그램 적재 실패 시 -1 리턴 */
+/* 프로그램 적재 성공 시 자식 프로세스의 pid 리턴 */ 
+
+/*
+1. 자식 프로세스 생성 - process_fork()
+2. 부모 프로세스 상태 복사 - intr_frame 이용
+3. 자식 프로세스 실행 -> 로드 완료할 때 까지 부모 프로세스는 대기 - sema 
+4. 프로세스 생성 성공 여부 반환 - thread->load_status
+*/
+
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+
+	// if_을 저장해서 __do_fork에 넘겨줘야함
+	//thread_current()->parent_if = *if_;
+	memcpy(&thread_current()->parent_if, if_, sizeof(struct intr_frame));
+
+	// 현재 스레드 복제해서 자식 스레드 생성
+	tid_t pid = thread_create(name, PRI_DEFAULT, __do_fork, thread_current());
+	if (pid == TID_ERROR)
+		return TID_ERROR;
+
+	// 방금 생성한 자식 스레드 찾기
+	struct thread* child = get_child_process(pid);
+
+	// 자식 생성이 완료될 때 까지 부모 대기시키기
+	sema_down(&child->fork_sema);
+
+	return pid;
+}
+
+/* Return given pid child thread *, if not exsist return NULL */
+struct thread *get_child_process(int pid) {
+    struct list_elem *e;
+    struct thread *cur = thread_current();
+
+    for (e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e)) {
+        struct thread *t = list_entry(e, struct thread, child_elem);
+        if (t->tid == pid) {
+            return t;
+        }
+    }
+
+    return NULL;
 }
 
 #ifndef VM
@@ -123,7 +167,7 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 /* A thread function that copies parent's execution context.
  * Hint) parent->tf does not hold the userland context of the process.
  *       That is, you are required to pass second argument of process_fork to
- *       this function. */
+ *       this function. */              
 static void
 __do_fork (void *aux) {
 	struct intr_frame if_;
@@ -133,8 +177,13 @@ __do_fork (void *aux) {
 	struct intr_frame *parent_if;
 	bool succ = true;
 
+	// parent_if 전달
+	parent_if = &parent->parent_if;
+
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	// 자식 프로세스의 리턴값 0으로 설정
+	if_.R.rax = 0;
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -156,6 +205,21 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
+
+	// 파일 디스크립터 테이블 복제
+	for (int i = 0; i < FDT_COUNT_LIMIT; i++) {
+		struct file *file = parent->fd_table[i];
+		if (file == NULL)
+			continue;
+		if (file > 2)
+			// 부모 프로세스와 자식 프로세스가 파일을 독립적으로 관리할 수 있도록 하기 위해서 복제해줘야 함
+			file = file_duplicate(file);
+		current->fd_table[i] = file;
+	}
+	current->next_fd = parent->next_fd;
+
+	// 자식 생성이 완료되면 부모 대기 해제 
+	sema_up(&current->fork_sema);
 
 	process_init ();
 
