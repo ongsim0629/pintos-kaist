@@ -26,6 +26,9 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+int process_add_file (struct file *f);
+struct file *prcoess_get_file (int fd);
+void process_close_file (int fd);
 
 /* General process initializer for initd and other process. */
 static void
@@ -349,15 +352,85 @@ process_wait (tid_t child_tid UNUSED) {
 	
 }
 
+
+/* project 2 helper functions */
+
+// 현재 파일을 현재 스레드의 파일 디스크립터 테이블에 추가해주는 함수
+int process_add_file(struct file *f){
+	struct thread *curr = thread_current();
+	// 파일 디스크립터 테이블에서 빈 슬롯(가장 작은 fd)을 찾음
+    for (int fd = 0; fd < curr->next_fd; fd++) {
+        if (curr->fd_table[fd] == NULL) {
+            curr->fd_table[fd] = f;
+            return fd;
+        }
+    }
+	// next_fd 보다 작으면서 동시에 빈 슬롯을 찾지 못한 경우
+    // next_fd를 사용하여 새로운 파일 디스크립터 할당
+    if (curr->next_fd < 64) {
+        curr->fd_table[curr->next_fd] = f;
+        return curr->next_fd++;
+    }
+    return -1;
+}
+
+struct file *process_get_file (int fd){
+	struct thread *curr = thread_current();
+
+	if (fd < 2 || fd >= 64) {
+        return NULL;
+    }
+
+	return curr->fd_table[fd];
+}
+
+void process_close_file (int fd){
+	struct thread *curr = thread_current();
+
+    // 파일 디스크립터가 유효한지 확인 (0 <= fd < 64)
+    if (fd < 2 || fd >= 64 || curr->fd_table[fd] == NULL) {
+        return;
+    }
+
+	struct file *file_to_close = curr->fd_table[fd];
+
+	// fd가 0 (stdin) 또는 1 (stdout)인 경우에 대한 특별 처리
+    if (fd == 0) {
+        // 표준 입력(stdin) 처리
+        // 필요하다면 참조 카운트 관리 (ex: curr->stdin_count 감소 등)
+    } else if (fd == 1) {
+        // 표준 출력(stdout) 처리
+        // 필요하다면 참조 카운트 관리 (ex: curr->stdout_count 감소 등)
+    } else {
+        // 일반 파일에 대한 처리
+        file_close(file_to_close);  // 일반 파일인 경우에만 파일 닫기
+    }
+
+	// 파일 디스크립터 테이블 초기화
+	curr->fd_table[fd] = NULL;
+}
+
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
 	struct thread *curr = thread_current ();
 	/* TODO: Your code goes here.
-	 * TODO: Implement process termination message (see
-	 * TODO: project2/process_termination.html).
-	 * TODO: We recommend you to implement process resource cleanup here. */
 
+	 * TODO: Implement process termination message (see project2/process_termination.html). */
+	printf("%s: exit(%d)\n", curr->name, curr->exit_status);
+
+	/* TODO: We recommend you to implement process resource cleanup here. */
+	/* 프로세스에 열려있는 모든 파일 닫기 */
+    for (int i = 2; i < curr->next_fd; i++) {
+        if (curr->fd_table[i] != NULL) {
+            file_close(curr->fd_table[i]); // 열려있는 파일 닫고
+            curr->fd_table[i] = NULL;      // fd_table에서 해당하는 부분 NULL 처리
+        }
+    }
+	// 파일 디스크립터 테이블 메모리 해제
+	palloc_free_multiple(curr->fd_table, FDT_PAGES);
+
+	curr->next_fd = 2;
 	process_cleanup ();
 }
 

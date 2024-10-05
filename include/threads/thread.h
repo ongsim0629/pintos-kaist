@@ -29,6 +29,10 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+/*fdt의 총 크기와 필요한 페이지 수 계산 */
+#define FDT_SIZE (sizeof(struct file *) * 64) // file 64개
+#define FDT_PAGES ((FDT_SIZE + PGSIZE - 1) / PGSIZE)
+
 struct thread *get_idle_thread(void);
 
 /* A kernel thread or user process.
@@ -109,6 +113,9 @@ struct thread {
 	int nice;
 	int recent_cpu;
 
+	/* [Project 2] for file system*/
+	struct file **fd_table;
+	int next_fd;
 
 	/* [Project 2] for process hierarchy */
 	//bool create_succ; // 프로세스의 생성 성공 여부 (실패 시 -1 )

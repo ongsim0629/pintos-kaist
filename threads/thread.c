@@ -223,6 +223,18 @@ thread_create (const char *name, int priority,
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
+
+	/* Allocate file descriptor table */
+	t->fd_table = palloc_get_multiple(PAL_ZERO, FDT_PAGES); // FDT_PAGES는 테이블 크기에 필요한 페이지 수
+	if (t->fd_table == NULL) {
+		// 에러 처리: 메모리 할당 실패 시 TID_ERROR 반환
+		return TID_ERROR;
+	}
+
+    /* 0번, 1번에 대한 추가적인 초기화도 필요한 지는 생각 좀 더 해보기 */
+    // t->fd_table[0] = 
+    // t->fd_table[1] = 
+	
 	tid = t->tid = allocate_tid ();
 
 	/* Call the kernel_thread if it scheduled.
@@ -523,6 +535,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	list_init(&t->donations);
 
 	// [Project 2]
+	t->next_fd = 2;
 	t->exit_status = 0;
 	sema_init(&t->exit_sema, 0);
 	sema_init(&t->fork_sema, 0);
