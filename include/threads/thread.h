@@ -29,6 +29,9 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+/* FDT에 저장할 수 있는 파일 디스크립터의 최대 개수 */
+#define FDT_COUNT_LIMIT 64
+
 struct thread *get_idle_thread(void);
 
 /* A kernel thread or user process.
@@ -113,6 +116,8 @@ struct thread {
 	/* [Project 2] for process hierarchy */
 	//bool create_succ; // 프로세스의 생성 성공 여부 (실패 시 -1 )
 	//bool is_exited; // 프로세스의 종료 유무
+
+	int load_status; // 프로세스의 생성 상태 (프로세스가 완전히 생성되었는지)
 	int exit_status; // 프로세스의 종료 상태
 
 	struct semaphore fork_sema; // 자식 프로세스의 생성 대기를 위한 세마포어
@@ -123,6 +128,10 @@ struct thread {
 
 	struct intr_frame parent_if; // 부모 프로세스 인터럽트 프레임
 
+	/* [Project 2] for file system*/
+	struct file **fd_table;
+	int next_fd;
+	
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */

@@ -25,6 +25,52 @@ void syscall_handler (struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+void check_address(void *addr);
+
+void syscall_handler (struct intr_frame *f);
+/* 시스템 종료 */
+void halt(void);
+
+/* 프로세스 종료 */
+void exit(int status);
+
+/* 파일 생성 */
+bool create(const char *file, unsigned initial_size);
+
+/* 파일 제거 */
+bool remove(const char *file);
+
+/* 파일 열기 */
+int open(const char *file);
+
+/* 파일 크기 반환 */
+int filesize(int fd);
+
+/* 파일의 위치 이동 */
+void seek(int fd, unsigned position);
+
+/* 파일 또는 키보드로부터 읽기 */
+int read(int fd, void *buffer, unsigned size);
+
+/* 파일 위치 반환 */
+unsigned int tell(int fd);
+
+/* 파일 닫기 */
+void close(int fd);
+
+/* 파일 또는 화면에 쓰기 */
+int write(int fd, void *buffer, unsigned size);
+
+/* 새로운 프로그램 실행 */
+tid_t exec(const char *cmd_line);
+
+/* 자식 프로세스가 종료될 때까지 대기 */
+int wait(tid_t tid);
+
+/* 프로세스를 복제하여 자식 프로세스 생성 */
+tid_t fork(const char *thread_name, struct intr_frame *f);
+
+
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -132,19 +178,19 @@ void check_address(void *addr){
 
 void halt(void){
 	/* shutdown_power_off()를 사용하여 pintos 종료 */
-	shutdown_power_off();
+	power_off();
 }
 
 void exit (int status)
 {
 	/* 실행중인 스레드 구조체를 가져옴 */
-/* 프로세스 종료 메시지 출력, 
-출력 양식: “프로세스이름: exit(종료상태)” */ 
-/* 스레드 종료 */
-struct thread *cur = thread_current (); 
-/* 프로세스 디스크립터에 exit status 저장 */
-printf("%s: exit(%d)\n" , cur -> name , status);
-thread_exit();
+	/* 프로세스 종료 메시지 출력, 
+	출력 양식: “프로세스이름: exit(종료상태)” */ 
+	/* 스레드 종료 */
+	struct thread *cur = thread_current (); 
+	/* 프로세스 디스크립터에 exit status 저장 */
+	printf("%s: exit(%d)\n" , cur -> name , status);
+	thread_exit();
 }
 
 
@@ -192,7 +238,7 @@ int read (int fd, void *buffer, unsigned size)
 장 후 읽은 바이트 수를 리턴 */
 }
 
-unsigned tell (int fd)
+unsigned int tell (int fd)
 {
 /* 파일 디스크립터를 이용하여 파일 객체 검색 */
 /* 해당 열린 파일의 위치를 반환 */
@@ -215,13 +261,23 @@ int write(int fd, void *buffer, unsigned size)
 만큼 파일에 기록후 기록한 바이트 수를 리턴 */
 }
 
+// process_exec 함수를 이용해서 인자로 받은 cmd_line을 실 
 tid_t exec(const char *cmd_line)
 {
-/* process_execute() 함수를 호출하여 자식 프로세스 생성 */
-/* 생성된 자식 프로세스의 프로세스 디스크립터를 검색 */
-/* 자식 프로세스의 프로그램이 적재될 때까지 대기 */
-/* 프로그램 적재 실패 시 -1 리턴 */
-/* 프로그램 적재 성공 시 자식 프로세스의 pid 리턴 */ 
+	// 1. cmd_line 주소 검증
+	check_address(cmd_line);
+
+	// 2. process_exec에 전달할 cmd_line 복사본 만들기
+	char *cmd_line_copy = palloc_get_page(0);
+	if (cmd_line_copy == NULL)
+		exit(-1);
+	strlcpy(cmd_line_copy, cmd_line, PGSIZE);
+
+	// 3. process_exec 함수 호출
+	if (process_exec(cmd_line_copy) == -1) {
+		palloc_free_page(cmd_line_copy); // 실패했을 경우 메모리 해제
+		exit(-1);
+	}
 }
 
 int wait(tid_t tid)
@@ -230,6 +286,19 @@ int wait(tid_t tid)
 /* process_wait() 사용 */
 }
 
+// 현재 프로세스를 복제하여 새로운 자식 프로세스를 생성
 tid_t fork(const char *thread_name, struct intr_frame *f){
+	/* process_execute() 함수를 호출하여 자식 프로세스 생성 */ 
+	/* 생성된 자식 프로세스의 프로세스 디스크립터를 검색 */
+	/* 자식 프로세스의 프로그램이 적재될 때까지 대기  -> sema_down() */
+	/* 프로그램 적재 실패 시 -1 리턴 */
+	/* 프로그램 적재 성공 시 자식 프로세스의 pid 리턴 */ 
 
+	/*
+	1. 자식 프로세스 생성 - process_fork()
+	2. 부모 프로세스 상태 복사 - intr_frame 이용
+	3. 자식 프로세스 실행 -> 로드 완료할 때 까지 부모 프로세스는 대기 - sema 
+	4. 프로세스 생성 성공 여부 반환 - thread->load_status
+	*/
+	return process_fork(thread_name, f);
 }

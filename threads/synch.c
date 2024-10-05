@@ -124,7 +124,7 @@ sema_up (struct semaphore *sema) {
         struct thread *ready = list_entry(list_front(&ready_list), struct thread, elem);
         // ready_list에 있는 스레드의 우선순위가 더 높으면 CPU를 넘김
         if (curr->priority < ready->priority) {
-            thread_yield();
+               thread_yield();
         }
     }
 }
