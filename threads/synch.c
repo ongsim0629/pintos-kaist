@@ -122,7 +122,7 @@ sema_up (struct semaphore *sema) {
     return;
    struct thread *curr = thread_current();
    struct thread *ready = list_entry(list_front(&ready_list), struct thread, elem);
-   if (!intr_context() && curr->priority < ready->priority) {
+   if (!intr_context() && curr->priority <= ready->priority) {
     thread_yield ();
    }
 	// if (!list_empty(&ready_list)) {
