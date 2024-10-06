@@ -145,29 +145,32 @@ page_fault (struct intr_frame *f) {
 	if (vm_try_handle_fault (f, fault_addr, user, write, not_present))
 		return;
 #endif
-
+	exit(-1);
+	
 	/* Count page faults. */
 	page_fault_cnt++;
 
 	/* If the fault is true fault, show info and exit. */
-	// printf ("Page fault at %p: %s error %s page in %s context.\n",
-	// 		fault_addr,
-	// 		not_present ? "not present" : "rights violation",
-	// 		write ? "writing" : "reading",
-	// 		user ? "user" : "kernel");
-	// kill (f);
+	
 
-	if (!user)
-    {
-        /* 커널 모드에서의 페이지 폴트는 치명적이므로 커널 패닉 발생 */
-        PANIC("Kernel bug - unexpected page fault in kernel");
-		// kill(f);
-    }
-    else
-    {
-        /* 사용자 모드에서의 페이지 폴트는 프로세스를 종료 */
-        printf("%s: exit(%d)\n", thread_name(), -1);
-        exit(-1);
-    }
+	printf ("Page fault at %p: %s error %s page in %s context.\n",
+			fault_addr,
+			not_present ? "not present" : "rights violation",
+			write ? "writing" : "reading",
+			user ? "user" : "kernel");
+	kill (f);
+
+	// if (!user)
+    // {
+    //     /* 커널 모드에서의 페이지 폴트는 치명적이므로 커널 패닉 발생 */
+    //     PANIC("Kernel bug - unexpected page fault in kernel");
+	// 	// kill(f);
+    // }
+    // else
+    // {
+    //     /* 사용자 모드에서의 페이지 폴트는 프로세스를 종료 */
+    //     printf("%s: exit(%d)\n", thread_name(), -1);
+    //     exit(-1);
+    // }
 }
 

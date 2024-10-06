@@ -17,6 +17,7 @@
 #include "threads/thread.h"
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
+#include "userprog/exception.h"
 #include "intrinsic.h"
 #ifdef VM
 #include "vm/vm.h"
@@ -482,7 +483,11 @@ process_exit (void) {
 	/* TODO: Your code goes here.
 
 	 * TODO: Implement process termination message (see project2/process_termination.html). */
-	printf("%s: exit(%d)\n", curr->name, curr->exit_status);
+	//struct intr_frame *f = &curr->tf;
+	//bool user = (f->error_code & PF_U) != 0;
+
+	//if (user)
+	//printf("%s: exit(%d)\n", curr->name, curr->exit_status);
 
 	/* TODO: We recommend you to implement process resource cleanup here. */
 	/* 프로세스에 열려있는 모든 파일 닫기 */
@@ -498,6 +503,7 @@ process_exit (void) {
 	curr->next_fd = 2;
 	process_cleanup ();
 	sema_up(&curr->exit_sema);
+	sema_up(&curr->fork_sema);
 }
 
 /* Free the current process's resources. */
