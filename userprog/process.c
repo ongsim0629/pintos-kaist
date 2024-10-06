@@ -433,7 +433,7 @@ process_wait (tid_t child_tid) {
 int process_add_file(struct file *f){
 	struct thread *curr = thread_current();
 	// 파일 디스크립터 테이블에서 빈 슬롯(가장 작은 fd)을 찾음
-    for (int fd = 0; fd < curr->next_fd; fd++) {
+    for (int fd = 2; fd < curr->next_fd; fd++) {
         if (curr->fd_table[fd] == NULL) {
             curr->fd_table[fd] = f;
             return fd;
