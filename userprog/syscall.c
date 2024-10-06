@@ -382,7 +382,7 @@ int write(int fd, void *buffer, unsigned size)
     return result;  // 실제로 쓴 바이트 수 반환
 }
 
-// process_exec 함수를 이용해서 인자로 받은 cmd_line을 실 
+// process_exec 함수를 이용해서 인자로 받은 cmd_line을 실행
 tid_t exec(const char *cmd_line)
 {
 	// 1. cmd_line 주소 검증
@@ -405,6 +405,7 @@ int wait(tid_t tid)
 {
 /* 자식 프로세스가 종료 될 때까지 대기 */
 /* process_wait() 사용 */
+	return process_wait(tid);
 }
 
 // 현재 프로세스를 복제하여 새로운 자식 프로세스를 생성

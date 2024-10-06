@@ -126,7 +126,7 @@ struct thread {
 	//bool create_succ; // 프로세스의 생성 성공 여부 (실패 시 -1 )
 	//bool is_exited; // 프로세스의 종료 유무
 
-	int load_status; // 프로세스의 생성 상태 (프로세스가 완전히 생성되었는지)
+	//int load_status; // 프로세스의 생성 상태 (프로세스가 완전히 생성되었는지)
 	int exit_status; // 프로세스의 종료 상태
 
 	struct semaphore fork_sema; // 자식 프로세스의 생성 대기를 위한 세마포어
