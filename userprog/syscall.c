@@ -195,6 +195,7 @@ void exit (int status)
 	struct thread *cur = thread_current (); 
 	/* 프로세스 디스크립터에 exit status 저장 */
 	printf("%s: exit(%d)\n" , cur -> name , status);
+	cur->exit_status = status;
 	thread_exit();
 }
 
