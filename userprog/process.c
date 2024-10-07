@@ -118,7 +118,7 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	return pid;
 }
 
-/* Return given pid child thread *, if not exsist return NULL */
+/* Return given pid child thread *, if not exist return NULL */
 struct thread *get_child_process(int pid) {
     struct list_elem *e;
     struct thread *cur = thread_current();
@@ -187,7 +187,7 @@ __do_fork (void *aux) {
 	bool succ = true;
 
 	// 부모 자식 관계 설정
-	list_push_back(&parent->child_list, &current->child_elem);
+	//list_push_back(&parent->child_list, &current->child_elem);
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, &parent->parent_if, sizeof (struct intr_frame));
@@ -422,6 +422,9 @@ process_wait (tid_t child_tid) {
 	}
 
 	sema_down(&child_t->exit_sema);
+
+	list_remove(&child_t->child_elem); // 자식 프로세스의 종료됐으므로 리스트에서 제거 
+
   	return child_t->exit_status;
 	
 }
